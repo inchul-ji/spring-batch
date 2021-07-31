@@ -101,8 +101,20 @@ Spring batch Architecture
 [ 데이터 공유 ExecutionContext 이해 ]
 
 
+[ Task 기반 배치와 Chunk 기반 배치]
+ - batch 를 처리할 수 있는 방법은 크게 2가지
+ - Tasklet을 사용한 Task 기반 처리
+    - 배치 처리 과정이 비교적 쉬운 경우 쉽게 사용
+    - 대량 처리를 하는 경우 더 복잡
+    - 하나의 큰 덩어리를 여러 덩어리로 나누어 처리하기 부적합
 
+ - Chunk를 사용한 chunk(덩어리) 기반 처리
+    - ItemReader, ItemProcessor, ItemWriter 의 관계 이해 필요
+    - 대량 처리를 하는 경우 Tasklet 보다 비교적 쉽게 구현
+    - 예를 들어 10,000개의 데이터 중 1,000개씩 10개의 덩어리로 수행
+        - 이를 Tasklet 으로 처리하면 10,000개를 한번에 처리하거나 수동으로 1,000개씩 분할
 
+ - 예제 참고
 
 
 
