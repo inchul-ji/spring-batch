@@ -8,3 +8,5 @@ spring:
 
 batch:
   initialize-schema: never
+
+# 이후 vm option(또는 intelliJ 유료버전은 Active profiles) 에 -Dspring.profiles.active=mysql 을 추가하여 해당 yml을 읽을 수 있도록 한다.
