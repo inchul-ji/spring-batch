@@ -1,10 +1,14 @@
 spring:
   datasource:
     hikari:
-      jdbc-url: jdbc:mysql://127.0.0.1:3306/spring_batch?characterEncoding=UTF-8&serverTimezone=UTC
+      jdbc-url: jdbc:mysql://127.0.0.1:3306/spring_batch?characterEncoding=UTF-8&serverTimezone=UTC&rewriteBatchedStatements=true  # rewriteBatchedStatements : mysql에서 bulk insert 를 하기 위한 옵션
       driver-class-name: com.mysql.cj.jdbc.Driver
       username: root
       password: root
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
 
 batch:
   initialize-schema: never
