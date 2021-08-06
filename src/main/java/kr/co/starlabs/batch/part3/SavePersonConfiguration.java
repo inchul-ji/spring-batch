@@ -16,7 +16,9 @@ import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
+import org.springframework.batch.item.support.CompositeItemProcessor;
 import org.springframework.batch.item.support.CompositeItemWriter;
+import org.springframework.batch.item.support.builder.CompositeItemProcessorBuilder;
 import org.springframework.batch.item.support.builder.CompositeItemWriterBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -59,14 +61,37 @@ public class SavePersonConfiguration {
                 .<Person, Person>chunk(10)
                 .reader(itemReader())
 //                .processor(new DuplicateValidationProcessor<>(Person::getName, false))
-                .processor(new DuplicateValidationProcessor<>(Person::getName, Boolean.parseBoolean(allowDuplicate)))
+//                .processor(new DuplicateValidationProcessor<>(Person::getName, Boolean.parseBoolean(allowDuplicate)))
+                .processor(itemProcessor(allowDuplicate))
                 .writer(itemWriter())
                 .listener(new SavePersonListener.SavePersonStepExecutionListener())
+                .faultTolerant()// 이걸 추가해야 skip()과 같은 메서드를 사용할 수 있도록 해준다.
+                .skip(NotFoundNameException.class)
+                .skipLimit(2) // 2번까지는 NotFoundNameException 을 허용(skip) 하겠다.
+                .retry(NotFoundNameException.class)
+                .retryLimit(3)
                 .build();
     }
 
-    private ItemProcessor<? super Person, ? extends Person> itemProcessor() {
-        return null;
+    private ItemProcessor<? super Person, ? extends Person> itemProcessor(String allowDuplicate) throws Exception {
+        DuplicateValidationProcessor<Person> duplicateValidationProcessor =
+                new DuplicateValidationProcessor<>(Person::getName, Boolean.parseBoolean(allowDuplicate));
+
+        ItemProcessor<Person, Person> validationProcessor = item -> {
+            if (item.isNotEmptyName()) {
+                return item;
+            }
+
+            throw new NotFoundNameException();
+        };
+
+        CompositeItemProcessor<Person, Person> itemProcessor = new CompositeItemProcessorBuilder()
+                .delegates(new PersonValidationRetryProcessor(), validationProcessor, duplicateValidationProcessor)
+                .build();
+
+
+        itemProcessor.afterPropertiesSet();
+        return itemProcessor;
     }
 
     private ItemWriter<? super Person> itemWriter() throws Exception {
@@ -103,13 +128,14 @@ public class SavePersonConfiguration {
 
         FlatFileItemReader<Person> itemReader = new FlatFileItemReaderBuilder<Person>()
                 .name("savePersonItemReader")
-                .encoding("UTF-8")
-                .linesToSkip(1)
-                .resource(new ClassPathResource("person.csv"))
+                .encoding("UTF-8") // UTF-8로 변환하겠다.
+                .linesToSkip(1) // 첫번쨰 라인은 skip 하고,
+                .resource(new ClassPathResource("person.csv")) // person.csv를 읽겠다.
                 .lineMapper(lineMapper)
                 .build();
 
-        itemReader.afterPropertiesSet();
+        itemReader.afterPropertiesSet(); // 잘만들어졌는지 최종 검증
+
         return itemReader;
     }
 

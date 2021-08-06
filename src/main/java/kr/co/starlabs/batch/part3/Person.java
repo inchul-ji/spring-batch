@@ -7,6 +7,7 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import java.util.Objects;
 
 @Entity
 @NoArgsConstructor
@@ -25,10 +26,6 @@ public class Person {
     public Person(String name, String age, String address) {
         this(0,name, age,address);
         // id를 0 으로 설정하면 JPA 에서 알아서 AutoIncrement 를 해주기 때문에 문제 없다.
-
-//        this.name = name;
-//        this.age = age;
-//        this.address = address;
     }
 
     public Person(int id, String name, String age, String address) {
@@ -36,5 +33,14 @@ public class Person {
         this.name = name;
         this.age = age;
         this.address = address;
+    }
+
+    public boolean isNotEmptyName() {
+        return Objects.nonNull(this.name) && !name.isEmpty();
+    }
+
+    public Person unKnownName() {
+        this.name = "UNKNOWN";
+        return this;
     }
 }
