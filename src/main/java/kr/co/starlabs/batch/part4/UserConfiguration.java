@@ -157,7 +157,7 @@ public class UserConfiguration {
     @Bean(JOB_NAME + "_userLevelUpStep")
     public Step userLevelUpStep() throws Exception {
         return this.stepBuilderFactory.get(JOB_NAME + "_userLevelUpStep")
-                .<User, User>qchunk(CHUNK)
+                .<User, User>chunk(CHUNK)
                 .reader(itemReader()) // db select
                 .processor(itemProcessor()) // 비즈니스 로직
                 .writer(itemWriter()) // insert update
