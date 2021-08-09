@@ -5,6 +5,8 @@ import lombok.Getter;
 
 import java.time.LocalDate;
 
+// 합산 금액을 담는 Class
+
 @Getter
 public class OrderStatistics {
 
@@ -17,4 +19,6 @@ public class OrderStatistics {
         this.amount = amount;
         this.date = date;
     }
+
+
 }

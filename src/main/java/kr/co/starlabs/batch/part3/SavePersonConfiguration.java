@@ -55,7 +55,7 @@ public class SavePersonConfiguration {
     }
 
     @Bean
-    @JobScope
+    @JobScope // @Value("#{jobParameters[allow_duplicate]}") 이거를 사용하려면 항상 @JobScope 이 필요하다.
     public Step savePersonStep(@Value("#{jobParameters[allow_duplicate]}") String allowDuplicate) throws Exception {
         return this.stepBuilderFactory.get("savePersonStep")
                 .<Person, Person>chunk(10)
@@ -65,7 +65,7 @@ public class SavePersonConfiguration {
                 .processor(itemProcessor(allowDuplicate))
                 .writer(itemWriter())
                 .listener(new SavePersonListener.SavePersonStepExecutionListener())
-                .faultTolerant()// 이걸 추가해야 skip()과 같은 메서드를 사용할 수 있도록 해준다.
+                .faultTolerant()// 이걸 추가해야 skip(), retry() 와 같은 메서드를 사용할 수 있도록 해준다.
                 .skip(NotFoundNameException.class)
                 .skipLimit(2) // 2번까지는 NotFoundNameException 을 허용(skip) 하겠다.
                 .retry(NotFoundNameException.class)
@@ -81,14 +81,12 @@ public class SavePersonConfiguration {
             if (item.isNotEmptyName()) {
                 return item;
             }
-
             throw new NotFoundNameException();
         };
 
         CompositeItemProcessor<Person, Person> itemProcessor = new CompositeItemProcessorBuilder()
                 .delegates(new PersonValidationRetryProcessor(), validationProcessor, duplicateValidationProcessor)
                 .build();
-
 
         itemProcessor.afterPropertiesSet();
         return itemProcessor;
@@ -113,9 +111,10 @@ public class SavePersonConfiguration {
     }
 
     private ItemReader<? extends Person> itemReader() throws Exception {
-        DefaultLineMapper<Person> lineMapper = new DefaultLineMapper<>();
-        DelimitedLineTokenizer lineTokenizer = new DelimitedLineTokenizer();
+        DefaultLineMapper<Person> lineMapper = new DefaultLineMapper<>(); // 매핑 설정
+        DelimitedLineTokenizer lineTokenizer = new DelimitedLineTokenizer(); // 토큰나이저
 
+        // 필드명 설정
         lineTokenizer.setNames("name", "age", "address");
         lineMapper.setLineTokenizer(lineTokenizer);
         lineMapper.setFieldSetMapper(fieldSet -> new Person(
@@ -128,7 +127,7 @@ public class SavePersonConfiguration {
 
         FlatFileItemReader<Person> itemReader = new FlatFileItemReaderBuilder<Person>()
                 .name("savePersonItemReader")
-                .encoding("UTF-8") // UTF-8로 변환하겠다.
+                .encoding("UTF-8") // Encoding 을 UTF-8로 변환하겠다.
                 .linesToSkip(1) // 첫번쨰 라인은 skip 하고,
                 .resource(new ClassPathResource("person.csv")) // person.csv를 읽겠다.
                 .lineMapper(lineMapper)

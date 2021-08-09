@@ -27,7 +27,7 @@ public class User {
 
 //    private int totalAmount;
 
-    @OneToMany(cascade = CascadeType.PERSIST) // user 가 저장될 때 같이 저장되도록
+    @OneToMany(cascade = CascadeType.PERSIST, fetch = FetchType.EAGER) // user 가 저장될 때 같이 저장되도록
     @JoinColumn(name = "user_id")
     private List<Orders> orders;
 
@@ -79,7 +79,7 @@ public class User {
                 return false;
             }
 
-            if (Objects.isNull(level.nextLevel)) {
+            if (Objects.isNull(level.nextLevel)) { // VIP 인 경우,
                 return false;
             }
 

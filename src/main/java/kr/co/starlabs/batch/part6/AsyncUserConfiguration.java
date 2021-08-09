@@ -1,5 +1,9 @@
-package kr.co.starlabs.batch.part4;
+package kr.co.starlabs.batch.part6;
 
+import kr.co.starlabs.batch.part4.LevelUpJobExecutionListener;
+import kr.co.starlabs.batch.part4.SaveUserTasklet;
+import kr.co.starlabs.batch.part4.User;
+import kr.co.starlabs.batch.part4.UserRepository;
 import kr.co.starlabs.batch.part5.JobParametersDecide;
 import kr.co.starlabs.batch.part5.OrderStatistics;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +13,9 @@ import org.springframework.batch.core.configuration.annotation.JobBuilderFactory
 import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.integration.async.AsyncItemProcessor;
+import org.springframework.batch.integration.async.AsyncItemWriter;
+import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
@@ -24,6 +31,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.task.TaskExecutor;
 
 import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
@@ -32,32 +40,37 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Future;
 import java.util.function.Function;
 
 @Configuration
 @Slf4j
-public class UserConfiguration {
+public class AsyncUserConfiguration {
 
     private final int CHUNK = 1000;
-    private final String JOB_NAME = "userJob";
+    private final String JOB_NAME = "asyncUserJob";
 
     private final JobBuilderFactory jobBuilderFactory;
     private final StepBuilderFactory stepBuilderFactory;
     private final UserRepository userRepository;
     private final EntityManagerFactory entityManagerFactory;
     private final DataSource dataSource;
+    private final TaskExecutor taskExecutor;
 
 
-    public UserConfiguration(JobBuilderFactory jobBuilderFactory,
-                             StepBuilderFactory stepBuilderFactory,
-                             UserRepository userRepository,
-                             EntityManagerFactory entityManagerFactory,
-                             DataSource dataSource) {
+    public AsyncUserConfiguration(JobBuilderFactory jobBuilderFactory,
+                                  StepBuilderFactory stepBuilderFactory,
+                                  UserRepository userRepository,
+                                  EntityManagerFactory entityManagerFactory,
+                                  DataSource dataSource,
+                                  TaskExecutor taskExecutor) {
+
         this.jobBuilderFactory = jobBuilderFactory;
         this.stepBuilderFactory = stepBuilderFactory;
         this.userRepository = userRepository;
         this.entityManagerFactory = entityManagerFactory;
         this.dataSource = dataSource;
+        this.taskExecutor = taskExecutor;
     }
 
 
@@ -70,25 +83,24 @@ public class UserConfiguration {
                 .listener(new LevelUpJobExecutionListener(userRepository))
                 .next(new JobParametersDecide("date")) // date라는 파라미터가 있는지 확인, 있을 때만 아래 내용 실행
                 .on(JobParametersDecide.CONTINUE.getName())
-                .to(this.orderStatisticsStep(null, null))
+                .to(this.orderStatisticsStep(null))
                 .build()
                 .build();
     }
 
     @Bean(JOB_NAME+"_orderStatisticsStep")
     @JobScope
-    public Step orderStatisticsStep(@Value("#{jobParameters[date]}") String date,
-                                    @Value("#{jobParameters[path]}") String path) throws Exception {
+    public Step orderStatisticsStep(@Value("#{jobParameters[date]}") String date) throws Exception {
         return this.stepBuilderFactory.get(JOB_NAME+"_orderStatisticsStep")
                 .<OrderStatistics, OrderStatistics>chunk(CHUNK)
                 .reader(orderStatisticsItemReader(date))
-                .writer(orderStatisticsItemWriter(date, path))
+                .writer(orderStatisticsItemWriter(date))
                 .build();
 
 
     }
 
-    private ItemWriter<? super OrderStatistics> orderStatisticsItemWriter(String date, String path) throws Exception {
+    private ItemWriter<? super OrderStatistics> orderStatisticsItemWriter(String date) throws Exception {
         YearMonth yearMonth = YearMonth.parse(date);
 
         // csv 파일 이름
@@ -104,7 +116,7 @@ public class UserConfiguration {
 
         // 정크가 완전히 종료될 떄까지 파일을 생성하지 않고 있다가 모두 마무리 되면 생성한다.
         FlatFileItemWriter<OrderStatistics> itemWriter = new FlatFileItemWriterBuilder<OrderStatistics>()
-                .resource(new FileSystemResource(path + filename))
+                .resource(new FileSystemResource("output/" + filename))
                 .lineAggregator(lineAggregator)
                 .name(JOB_NAME + "_orderStatisticsItemWriter")
                 .encoding("UTF-8")
@@ -128,6 +140,10 @@ public class UserConfiguration {
 
         JdbcPagingItemReader<OrderStatistics> itemReader = new JdbcPagingItemReaderBuilder<OrderStatistics>()
                 .dataSource(this.dataSource)
+                .rowMapper((rs, rowNum) -> OrderStatistics.builder()
+                        .amount(rs.getString(1))
+                        .date(LocalDate.parse(rs.getString(2), DateTimeFormatter.ISO_DATE))
+                        .build())
                 .pageSize(CHUNK)
                 .name(JOB_NAME + "_orderStatisticsItemReader")
                 .selectClause("sum(amount), create_date")
@@ -136,10 +152,6 @@ public class UserConfiguration {
                 .groupClause("create_date")
                 .parameterValues(parameters)
                 .sortKeys(sortKey)
-                .rowMapper((rs, rowNum) -> OrderStatistics.builder()
-                        .amount(rs.getString(1))
-                        .date(LocalDate.parse(rs.getString(2), DateTimeFormatter.ISO_DATE))
-                        .build())
                 .build();
 
         itemReader.afterPropertiesSet();
@@ -157,27 +169,37 @@ public class UserConfiguration {
     @Bean(JOB_NAME + "_userLevelUpStep")
     public Step userLevelUpStep() throws Exception {
         return this.stepBuilderFactory.get(JOB_NAME + "_userLevelUpStep")
-                .<User, User>chunk(CHUNK)
-                .reader(itemReader()) // db select
-                .processor(itemProcessor()) // 비즈니스 로직
-                .writer(itemWriter()) // insert update
+                .<User, Future<User>>chunk(CHUNK)
+                .reader(itemReader())
+                .processor(itemProcessor())
+                .writer(itemWriter())
                 .build();
     }
 
-    private ItemWriter<? super User> itemWriter() {
-        return users -> users.forEach(x -> {
+    private AsyncItemWriter<User> itemWriter() {
+        ItemWriter<User> itemWriter = users -> users.forEach(x -> {
                 x.levelUp();
                 userRepository.save(x);
             });
+        AsyncItemWriter<User> asyncItemWriter = new AsyncItemWriter<>();
+        asyncItemWriter.setDelegate(itemWriter);
+
+        return asyncItemWriter;
     }
 
-    private Function<? super User, ? extends User> itemProcessor() {
-        return user -> {
+    private AsyncItemProcessor<User, User> itemProcessor() {
+        ItemProcessor<User, User> itemProcessor = user -> {
             if (user.availableLevelUp()) { // 등급 상향 대상의 유저인지 체크
                 return user;
             }
             return null;
         };
+
+        AsyncItemProcessor<User, User> asyncItemProcessor = new AsyncItemProcessor<>();
+        asyncItemProcessor.setDelegate(itemProcessor);
+        asyncItemProcessor.setTaskExecutor(this.taskExecutor);
+
+        return asyncItemProcessor;
     }
 
     private ItemReader<? extends User> itemReader() throws Exception {

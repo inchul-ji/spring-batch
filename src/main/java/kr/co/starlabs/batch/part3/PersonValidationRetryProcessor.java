@@ -14,9 +14,10 @@ public class PersonValidationRetryProcessor implements ItemProcessor<Person, Per
     private final RetryTemplate retryTemplate;
 
     public PersonValidationRetryProcessor() {
+        // NotFoundNameException이 3번 발생할 때 까지는 허용하고, 재시도한다.
         this.retryTemplate = new RetryTemplateBuilder()
-                .maxAttempts(3)
-                .retryOn(NotFoundNameException.class) // NotFoundNameException이 3번 발생할 때 까지는 허용하고, 재시도한다.
+                .maxAttempts(3) // retryLimit()과 비슷하다.
+                .retryOn(NotFoundNameException.class) // retry()와 비슷하다.
                 .withListener(new SavePersonRetryListener())
                 .build();
     }
@@ -25,29 +26,26 @@ public class PersonValidationRetryProcessor implements ItemProcessor<Person, Per
     public Person process(Person item) throws Exception {
         return this.retryTemplate.execute(context -> {
             // RetryCallback : RetryTemplate의 첫 시작점 (즉 process가 시작될 때 처음 시작되는 시작점)
+
             // 위의 constructor 에 있는 maxAttempts() 의 설정 수 만큼 retryCallback 이 실행된다.
 
             if (item.isNotEmptyName()) {
                 return item;
             }
-
             throw new NotFoundNameException();
 
         }, context -> {
-            // RecoveryCallback : 현재 설정 상 RetryCallback에서  NotFoundNameException이 3번 발생하면 RecoveryCallback 이 호출된다.
-
+            // RecoveryCallback : 현재 설정 상 RetryCallback에서  NotFoundNameException이 3번쨰까지 발생하면 RecoveryCallback 이 호출된다.
             return item.unKnownName();
-
-
         });
     }
 
     public static class SavePersonRetryListener implements RetryListener {
-
         // retry를 시작하는 설정
         @Override
         public <T, E extends Throwable> boolean open(RetryContext context, RetryCallback<T, E> callback) {
-            return true; // true: retry 적용
+            // true: retry 적용,
+            return true;
         }
 
         // retry 종료 후 호출
@@ -56,6 +54,7 @@ public class PersonValidationRetryProcessor implements ItemProcessor<Person, Per
             log.info("SavePersonRetryListener close()");
         }
 
+        // Error가 발생하면 호출된다. 여기서는  throw new NotFoundNameException(); 이 동작하면 동작한다.
         @Override
         public <T, E extends Throwable> void onError(RetryContext context, RetryCallback<T, E> callback, Throwable throwable) {
             log.info("SavePersonRetryListener onError()");

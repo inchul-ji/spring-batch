@@ -13,6 +13,7 @@ import org.springframework.batch.core.annotation.BeforeStep;
 @Slf4j
 public class SavePersonListener {
 
+    // interface 기반 방법
     public static class SavePersonJobExecutionListener implements JobExecutionListener {
         // job 실행 전 호출
         @Override

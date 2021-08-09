@@ -9,9 +9,9 @@ import java.util.function.Function;
 
 public class DuplicateValidationProcessor<T> implements ItemProcessor<T, T> {
 
-    private final Map<String, Object> keyPool = new ConcurrentHashMap<>();
+    private final Map<String, Object> keyPool = new ConcurrentHashMap<>(); // 중복 체크 용도
     // <input, output>
-    private final Function<T, String> keyExtractor;
+    private final Function<T, String> keyExtractor; // Function<input, output>
     private final boolean allowDuplicate;
 
     public DuplicateValidationProcessor(Function<T, String> keyExtractor,
@@ -22,7 +22,8 @@ public class DuplicateValidationProcessor<T> implements ItemProcessor<T, T> {
 
     @Override
     public T process(T item) throws Exception {
-        if (allowDuplicate) { // 중복체크를 할거냐 말거냐 확인 true: 필터링을 하지말라, false : 필터링을 해라
+        // 중복체크를 할거냐 말거냐 확인
+        if (allowDuplicate) { // true: 필터링을 하지말라,  false: 필터링을 해라
             return item; // true이면 item을 그냥 넘긴다.
         }
 
